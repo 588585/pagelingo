@@ -6,6 +6,8 @@
     "chrome 70"
   ],
   "scripts": {
+    "test": "node --test tests/translation-service.test.cjs",
+    "test:browser": "node --test tests/browser.test.cjs",
     "build": "npx gulp",
     "firefox": "npx gulp firefox-build ",
     "chrome": "npx gulp chrome-build "

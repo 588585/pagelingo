@@ -10,7 +10,7 @@ if (twpConfig.get('translateTag_pre') !== 'yes') {
     blockElements.push('PRE')
 }
 
-const headingElements = ['h1' ];
+const headingElements = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
 
 const pdfSelectorsConfig =   {
     regex:
@@ -132,6 +132,7 @@ function getPageSpecialConfig(ctx){
 
 
 function isValidNode(node){
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
   if(node.hasAttribute && node.hasAttribute(enhanceMarkAttributeName)){
     return false;
   }
@@ -148,7 +149,7 @@ function isValidNode(node){
     return false;
   }
   // check ancestors
-  if(node.closest && node.closest(`[${enhanceMarkAttributeName}=copiedNode]`)){
+  if(node.closest && node.closest(`[${enhanceMarkAttributeName}=copiedNode], .notranslate, [translate="no"], [contenteditable="true"], [contenteditable=""]`)){
     return false;
   }
   // check is img node
@@ -212,9 +213,24 @@ function isDuplicatedChild(array,child){
   }
   return false;
 }
+
+// querySelectorAll excludes the root itself, which is often the paragraph or
+// container passed by the mutation observer on dynamically updated pages.
+function queryIncludingRoot(root, selector) {
+  if (!root || !root.querySelectorAll) return [];
+  try {
+    const nodes = Array.from(root.querySelectorAll(selector));
+    if (root.matches && root.matches(selector)) nodes.unshift(root);
+    return nodes;
+  } catch (error) {
+    console.warn('[PageLingo] Ignoring an invalid page selector:', selector);
+    return [];
+  }
+}
+
 async function getNodesThatNeedToTranslate(root,ctx,options){
   options = options || {};
-  const pageSpecialConfig = getPageSpecialConfig(ctx);
+  const pageSpecialConfig = options.ignoreSpecialRules ? null : getPageSpecialConfig(ctx);
   const twpConfig = ctx.twpConfig
   const neverTranslateLangs = twpConfig.get('neverTranslateLangs');
   const isShowDualLanguage = twpConfig.get("isShowDualLanguage")==='no'?false:true;
@@ -260,7 +276,7 @@ async function getNodesThatNeedToTranslate(root,ctx,options){
     for(const selector of allBlocksSelectors){
 
       if(root && root.querySelectorAll){
-        const nodes = root.querySelectorAll(selector);
+        const nodes = queryIncludingRoot(root, selector);
         for(const node of nodes){
           if(currentHostname==="twitter.com" || currentHostname==="twitterdesk.twitter.com" || currentHostname==="mobile.twitter.com"){
             // check language
@@ -303,7 +319,7 @@ async function getNodesThatNeedToTranslate(root,ctx,options){
     }  
     for(const root of containers){
       for(const blockTag of blockElements){
-        const paragraphs = root.querySelectorAll(blockTag.toLowerCase());
+        const paragraphs = queryIncludingRoot(root, blockTag.toLowerCase());
         for (const paragraph of paragraphs) {
           if(isValidNode(paragraph) && !isDuplicatedChild(allNodes,paragraph)){
             allNodes.push(paragraph);
@@ -313,9 +329,9 @@ async function getNodesThatNeedToTranslate(root,ctx,options){
       if(!pageSpecialConfig || !pageSpecialConfig.containerSelectors){
        // add addition heading nodes
         for(const headingTag of headingElements){
-          const headings = originalRoot.querySelectorAll(headingTag.toLowerCase());
+          const headings = queryIncludingRoot(originalRoot, headingTag.toLowerCase());
           for (const heading of headings) {
-            if(isValidNode(heading)){
+            if(isValidNode(heading) && !isDuplicatedChild(allNodes, heading)){
               // check if there is already exist in allNodes
               let isExist = false;
               for(const node of allNodes){
@@ -335,6 +351,12 @@ async function getNodesThatNeedToTranslate(root,ctx,options){
   }
 
 
+  // Old site rules may no longer match a redesigned page (for example GitHub
+  // Codespaces has no .markdown-body). Fall back only when no content matched.
+  if (allNodes.length === 0 && !isIframeContainer && pageSpecialConfig) {
+    return getNodesThatNeedToTranslate(root, ctx, { ...options, ignoreSpecialRules: true });
+  }
+
   // sort allNodes, from top to bottom
   allNodes.sort(function(a, b) {
     return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
@@ -353,8 +375,8 @@ async function getNodesThatNeedToTranslate(root,ctx,options){
         const nodeText = node.innerText;
         if(nodeText && nodeText.trim().length>0){
             const lang = await detectLanguage(nodeText);
-            if(lang && !checkIsSameLanguage(lang,[currentTargetLanguage,...neverTranslateLangs],ctx)){
-              // only translate the clearly language
+            if(!lang || !checkIsSameLanguage(lang,[currentTargetLanguage,...neverTranslateLangs],ctx)){
+              // Unknown/short text can still be translated by the provider.
               newAllNodes.push(node);
             }
 
@@ -496,7 +518,7 @@ function getContainers(root,pageSpecialConfig){
         let containers =[];
         for(const selector of pageSpecialConfig.containerSelectors){
             if(root && root.querySelectorAll){
-              const allContainer = root.querySelectorAll(pageSpecialConfig.containerSelectors);
+              const allContainer = queryIncludingRoot(root, selector);
               if(allContainer){
                 for(const container of allContainer){
                   // check if brToParagraph
@@ -537,7 +559,7 @@ function getContainers(root,pageSpecialConfig){
     }
 
     ps.forEach(p => {
-        if(checkAgainstBlacklist(p, 3) // Make sure it's not in our blacklist
+        if(isValidNode(p) && checkAgainstBlacklist(p, 3) // Make sure it's not in our blacklist
         && p.offsetHeight !== 0) { //  Make sure it's visible on the regular page
             const myInnerText = p.innerText.match(/\S+/g);
             if(myInnerText) {
@@ -567,7 +589,9 @@ function getContainers(root,pageSpecialConfig){
         selectedContainer = selectedContainer.parentElement;
     }
 
-    return [selectedContainer];
+    // Footer/sidebar widgets contain ordinary readable text too. A main-content
+    // heuristic alone misses these blocks, including the widgets on timi.org.
+    return [selectedContainer, ...queryIncludingRoot(root, 'footer, aside, .widget-wrapper, [role="contentinfo"]')];
 }
 
 // Check given item against blacklist, return null if in blacklist
@@ -652,6 +676,10 @@ addStyle()
             action: "detectLanguage",
              text: text
         }, response => {
+            if (chrome.runtime.lastError) {
+                resolve(undefined);
+                return;
+            }
             resolve(response)
         })
     })

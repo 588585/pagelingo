@@ -28,10 +28,10 @@ npm run build
 单独构建 Firefox：`npm run firefox`；单独构建 Chrome/Edge：`npm run chrome`。
 完整构建会清理并重新生成 `dist`，不要在其中保存手工修改。
 
-当前扩展版本为 `0.0.41`，输出文件为：
+当前扩展版本为 `0.0.42`，输出文件为：
 
-- `dist/pagelingo-firefox-0.0.41.zip`：上传到 Mozilla AMO 签名。
-- `dist/pagelingo-chrome-0.0.41.zip`：Chrome/Edge 压缩包。
+- `dist/pagelingo-firefox-0.0.42.zip`：上传到 Mozilla AMO 签名。
+- `dist/pagelingo-chrome-0.0.42.zip`：Chrome/Edge 压缩包。
 - `dist/firefox`：Firefox 临时载入目录。
 - `dist/chrome`：Chrome/Edge 开发者模式加载目录。
 
@@ -48,13 +48,13 @@ ZIP 文件名自动使用 manifest 中的版本号。Firefox 本地构建包尚�
 - Chrome 构建额外切换 manifest，并合并后台脚本；Firefox 构建不执行该合并步骤。
 - 最后将构建目录打包成 ZIP。
 
-“附加组件包”上传 `pagelingo-firefox-0.0.41.zip`；“源代码”上传同一提交生成的 `pagelingo-source-0.0.41.zip`，两者不是同一个文件。
+“附加组件包”上传 `pagelingo-firefox-0.0.42.zip`；“源代码”上传同一提交生成的 `pagelingo-source-0.0.42.zip`，两者不是同一个文件。
 源码包应包含 `src/`、`gulpfile.js`、`package.json`、`package-lock.json`、README 和许可证，不包含 `node_modules/`、`.git/` 或构建输出。
 
 在提交修改后，可从同一提交生成源码 ZIP（先执行构建，确保 `dist` 已存在）：
 
 ```sh
-git archive --format=zip --output=dist/pagelingo-source-0.0.41.zip HEAD
+git archive --format=zip --output=dist/pagelingo-source-0.0.42.zip HEAD
 ```
 
 只复现 Firefox 构建时，审核者可以执行：
@@ -66,6 +66,35 @@ npm run firefox
 
 英文审核说明见 [AMO reviewer build instructions](docs/amo-review.md)。
 官方要求见 [Mozilla Source code submission](https://extensionworkshop.com/documentation/publish/source-code-submission/)。
+
+## 0.0.42 修复与测试
+
+- 当 GitHub 等网站的旧规则没有匹配到内容时，回退到通用段落识别。
+- 将页脚、侧栏和 widget 区域纳入翻译，覆盖 TIMI 网站的页脚文字。
+- 修复动态新增段落、作为扫描根节点的内容容器及跨越整个视口的长段落被遗漏的问题。
+- 语言检测结果未知时继续交给翻译服务判断；保留 `translate="no"` 和可编辑区域的排除规则。
+- 请求超过 15 秒时取消；请求失败时显示错误，并允许在原页面重试。失败记录不再永久阻止后续请求。
+
+服务层回归测试不需要额外依赖：
+
+```sh
+npm test
+```
+
+DOM 回归测试使用 Playwright 和 Edge，测试数据及翻译响应是本地模拟的。
+单独安装测试工具不会影响源码构建所使用的锁文件：
+
+```sh
+npm install --no-save --package-lock=false playwright@1.62.1
+npm run test:browser
+```
+
+需预先安装 Edge；也可以通过 `TEST_BROWSER_CHANNEL` 指定其他 Playwright 支持的浏览器通道。
+已有 Playwright 安装时，可通过 `PLAYWRIGHT_MODULE` 指定其模块路径。
+设置 `PAGELINGO_TEST_LIVE=1` 后运行 `npm test`，会额外向 Google 发送公开样本文字 `Hello world` 检查连接。
+
+如果某页仍不能翻译，请在 `about:debugging` → 此 Firefox → PageLingo → 检查 中查看扩展后台错误。
+翻译接口的网络错误应在这里排查；页面自身的 CSP、图片和字体警告未必来自 PageLingo。
 
 ## 来源
 

@@ -451,6 +451,7 @@ const translationService = (function () {
 
           /** @type {TranslationInfo} */
           const progressInfo = {
+            requestHash,
             originalText: requestString,
             translatedText: null,
             detectedLanguage: null,
@@ -520,11 +521,15 @@ const translationService = (function () {
         method: this.xhrMethod,
         headers
       }
-      params.body = this.cbGetExtraParameters
+      params.body = this.cbGetRequestBody
             ? this.cbGetRequestBody(sourceLanguage, targetLanguage, requests)
             : undefined
 
 
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      params.signal = controller.signal;
+      try {
       const response = await fetch(this.baseURL+(this.cbGetExtraParameters
               ? this.cbGetExtraParameters(
                   sourceLanguage,
@@ -533,9 +538,12 @@ const translationService = (function () {
                 )
               : ""),params)
       if(response.ok){
-        return response.json()
+        return await response.json()
       }else{
-        throw new Error(response.statusText)
+        throw new Error(`${this.serviceName}: HTTP ${response.status} ${response.statusText}`)
+      }
+      } finally {
+        clearTimeout(timeout);
       }
 
     }
@@ -572,6 +580,10 @@ const translationService = (function () {
           this.makeRequest(sourceLanguage, targetLanguage, request)
             .then((response) => {
               const results = this.cbParseResponse(response);
+              if (!Array.isArray(results) || results.length !== request.length ||
+                  results.some(result => !result || typeof result.text !== 'string')) {
+                throw new Error(`${this.serviceName}: invalid translation response`);
+              }
               for (const idx in request) {
                 const result = results[idx];
                 this.cbTransformResponse(result.text, dontSortResults); // apenas para gerar error
@@ -595,8 +607,9 @@ const translationService = (function () {
             .catch((e) => {
               console.error(e);
               for (const transInfo of request) {
+                transInfo.error = e;
                 transInfo.status = "error";
-                //this.translationsInProgress.delete([sourceLanguage, targetLanguage, transInfo.originalText])
+                this.translationsInProgress.delete(transInfo.requestHash);
               }
             })
         );
@@ -604,6 +617,8 @@ const translationService = (function () {
       await Promise.all(
         currentTranslationsInProgress.map((transInfo) => transInfo.waitTranlate)
       );
+      const failed = currentTranslationsInProgress.find(transInfo => transInfo.status === 'error');
+      if (failed) throw failed.error || new Error(`${this.serviceName}: translation failed`);
       return currentTranslationsInProgress.map((transInfo) =>
         this.cbTransformResponse(transInfo.translatedText, dontSortResults)
       );
@@ -1171,7 +1186,7 @@ const translationService = (function () {
         )
         .then((results) => sendResponse(results))
         .catch((e) => {
-          sendResponse();
+          sendResponse({ error: e.message || 'Translation failed' });
           console.error(e);
         });
 
@@ -1187,7 +1202,7 @@ const translationService = (function () {
         )
         .then((results) => sendResponse(results))
         .catch((e) => {
-          sendResponse();
+          sendResponse({ error: e.message || 'Translation failed' });
           console.error(e);
         });
 
@@ -1203,7 +1218,7 @@ const translationService = (function () {
         )
         .then((results) => sendResponse(results))
         .catch((e) => {
-          sendResponse();
+          sendResponse({ error: e.message || 'Translation failed' });
           console.error(e);
         });
 

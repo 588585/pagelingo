@@ -3,7 +3,7 @@
 Repository: https://github.com/588585/pagelingo
 
 Firefox add-on ID: `{385f9dfc-34cf-4f67-a6f6-14eee6678b5c}`.
-Extension version: `0.0.41`. The npm package version is separate from the extension version.
+Extension version: `0.0.42`. The npm package version is separate from the extension version.
 
 ## Environment
 
@@ -30,7 +30,7 @@ credentials, or access to a translation provider.
 Output:
 
 - Unpacked extension: `dist/firefox/`.
-- Unsigned submission package: `dist/pagelingo-firefox-0.0.41.zip`.
+- Unsigned submission package: `dist/pagelingo-firefox-0.0.42.zip`.
 
 Compare the unpacked files to the submitted unsigned extension package. ZIP
 container metadata, such as timestamps, may differ without changes to file content.
