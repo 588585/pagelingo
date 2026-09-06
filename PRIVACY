@@ -1,0 +1,6 @@
+PageLingo transmits website content to external translation services to provide translations.
+The only communication is with Google (translate.google.com and translate.googleapis.com), Yandex (translate.yandex.net), Bing (bing.com) and DeepL (deepl.com) server.
+These translation services (Google, Yandex, Bing and DeepL) can collect data to improve their services.
+To translate, all content on the page is sent to Google, Yandex, Bind or DeepL servers.
+For text to speech (tts) the text will be sent to Google.
+PageLingo is based on the upstream source at <a href="https://github.com/immersive-translate/old-immersive-translate">GitHub</a>.
